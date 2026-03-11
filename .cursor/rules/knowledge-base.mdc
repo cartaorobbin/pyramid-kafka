@@ -1,0 +1,28 @@
+---
+description: Directs the AI to use the knowledge/ directory for project context
+alwaysApply: true
+---
+
+# Project Knowledge Base
+
+This project maintains a `knowledge/` directory with context for AI assistants.
+
+## Before making design or architectural decisions
+
+Read these files for context:
+
+- `knowledge/architecture.md` — system overview, components, and data flow
+- `knowledge/decisions.md` — past architectural decisions and their rationale
+- `knowledge/concepts.md` — domain terminology, mental models, and invariants
+
+## When new decisions are made
+
+Update `knowledge/decisions.md` with a new entry following the ADR template in that file.
+
+## When new domain concepts emerge
+
+Update `knowledge/concepts.md` with new terms, mental models, or invariants.
+
+## Important
+
+The `knowledge/` directory is for AI context. Human-facing documentation belongs in `docs/`.

@@ -1,0 +1,5 @@
+site_name: pyramid-kafka
+theme:
+  name: material
+nav:
+  - Home: index.md

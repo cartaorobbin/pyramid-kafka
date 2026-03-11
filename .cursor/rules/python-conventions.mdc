@@ -1,0 +1,46 @@
+---
+description: Python project conventions for pyramid-kafka
+globs: "**/*.py"
+alwaysApply: false
+---
+
+# Python Conventions
+
+## Project layout
+
+- Source code lives in `src/pyramid_kafka/`
+- Tests live in `tests/`
+- Always use the `src` layout; never put package code at the repository root
+
+## Imports
+
+- All imports at the top of the module, never inside functions or methods
+- Use absolute imports: `from pyramid_kafka.module import thing`
+- Import order enforced by ruff (isort rules): stdlib, third-party, local
+
+## Formatting and linting
+
+- Formatter: black (line length 88)
+- Linter: ruff
+- Run before committing: `uv run ruff check .` and `uv run black .`
+
+## Testing
+
+- Framework: pytest
+- Test files: `tests/test_*.py`
+- Run: `uv run pytest`
+- Avoid mocks unless absolutely necessary; prefer real objects and integration tests
+
+## Forbidden
+
+- Never use pydantic
+- Never use FastAPI
+- Never add imports inside functions or methods
+
+## Style
+
+Follow the Zen of Python. Prefer:
+- Simple over complex
+- Explicit over implicit
+- Flat over nested
+- Readable over clever
