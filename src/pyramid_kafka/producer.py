@@ -52,9 +52,7 @@ def kafka_event_subscriber(event: KafkaEvent) -> None:
     """
     manager = event.request.registry.kafka
     manager.produce(topic=event.topic, value=event.kwargs, key=event.key)
-    logger.debug(
-        "Produced KafkaEvent to topic=%s key=%s", event.topic, event.key
-    )
+    logger.debug("Produced KafkaEvent to topic=%s key=%s", event.topic, event.key)
 
 
 def _extract_value(event: Any) -> dict[str, Any]:
@@ -67,7 +65,11 @@ def _extract_value(event: Any) -> dict[str, Any]:
         A dict of the event's public data.
     """
     if dataclasses.is_dataclass(event) and not isinstance(event, type):
-        data = dataclasses.asdict(event)
+        data = {
+            f.name: getattr(event, f.name)
+            for f in dataclasses.fields(event)
+            if not f.name.startswith("_") and f.name != "request"
+        }
     else:
         data = {
             k: v
