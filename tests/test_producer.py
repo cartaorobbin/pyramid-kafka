@@ -186,7 +186,9 @@ def test_make_registered_subscriber_with_callable_topic():
         value=lambda e: {"id": e.entity_id},
     )
 
+    mock_manager = MagicMock()
     mock_registry = MagicMock()
+    mock_registry.kafka = mock_manager
     event = MagicMock()
     event.entity = "order"
     event.entity_id = "123"
@@ -194,6 +196,7 @@ def test_make_registered_subscriber_with_callable_topic():
 
     sub(event)
 
-    mock_registry.kafka.producer.produce.assert_called_once()
-    call_args = mock_registry.kafka.producer.produce.call_args
-    assert call_args[0][0] == "dynamic.order"
+    mock_manager.produce.assert_called_once()
+    call_kwargs = mock_manager.produce.call_args[1]
+    assert call_kwargs["topic"] == "dynamic.order"
+    assert call_kwargs["value"] == {"id": "123"}

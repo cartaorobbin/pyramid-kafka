@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import dataclasses
-import json
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -55,6 +54,23 @@ def kafka_event_subscriber(event: KafkaEvent) -> None:
     logger.debug("Produced KafkaEvent to topic=%s key=%s", event.topic, event.key)
 
 
+def _get_kafka_manager(event: Any) -> Any | None:
+    """Resolve the KafkaManager from an event's request registry.
+
+    Args:
+        event: A Pyramid event with a ``request`` attribute.
+
+    Returns:
+        The KafkaManager instance, or None if unavailable.
+    """
+    request = getattr(event, "request", None)
+    if request is not None:
+        registry = getattr(request, "registry", None)
+        if registry is not None and hasattr(registry, "kafka"):
+            return registry.kafka
+    return None
+
+
 def _extract_value(event: Any) -> dict[str, Any]:
     """Extract a serializable dict from an event object.
 
@@ -100,28 +116,8 @@ def _make_registered_subscriber(
         resolved_key = key(event) if key is not None else None
         resolved_value = value(event) if value is not None else _extract_value(event)
 
-        if not isinstance(resolved_value, (str, bytes)):
-            resolved_value_bytes = json.dumps(resolved_value).encode("utf-8")
-        else:
-            resolved_value_bytes = (
-                resolved_value
-                if isinstance(resolved_value, bytes)
-                else resolved_value.encode("utf-8")
-            )
-
-        resolved_key_bytes = (
-            resolved_key.encode("utf-8")
-            if isinstance(resolved_key, str)
-            else resolved_key
-        )
-
-        registry = getattr(event, "request", None)
-        if registry is not None:
-            registry = registry.registry
-        else:
-            registry = getattr(event, "registry", None)
-
-        if registry is None or not hasattr(registry, "kafka"):
+        manager = _get_kafka_manager(event)
+        if manager is None:
             logger.warning(
                 "Cannot produce registered event to topic=%s: "
                 "no kafka manager on registry",
@@ -129,12 +125,7 @@ def _make_registered_subscriber(
             )
             return
 
-        registry.kafka.producer.produce(
-            resolved_topic,
-            value=resolved_value_bytes,
-            key=resolved_key_bytes,
-        )
-        registry.kafka.producer.poll(0)
+        manager.produce(topic=resolved_topic, value=resolved_value, key=resolved_key)
         logger.debug(
             "Produced registered event to topic=%s key=%s",
             resolved_topic,
