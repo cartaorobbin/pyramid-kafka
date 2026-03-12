@@ -5,6 +5,14 @@ description = "A Pyramid plugin for Apache Kafka integration (producer/consumer 
 readme = "README.md"
 requires-python = ">=3.13"
 license = {text = "MIT"}
+dependencies = [
+    "pyramid",
+    "confluent-kafka",
+    "click",
+]
+
+[project.scripts]
+kafka-consumer = "pyramid_kafka.consumer:run"
 
 [build-system]
 requires = ["hatchling"]
