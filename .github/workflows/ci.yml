@@ -9,6 +9,54 @@ on:
     types: [published]
 
 jobs:
+  security:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Trivy scan (SARIF)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: 'fs'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          exit-code: '0'
+
+      - name: Upload SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Trivy scan (CRITICAL/HIGH gate)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: 'fs'
+          format: 'table'
+          output: 'trivy-high.txt'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          exit-code: '1'
+          skip-setup-trivy: true
+
+      - name: Publish results to step summary
+        if: always()
+        run: |
+          if [ -s trivy-high.txt ]; then
+            {
+              echo "### Trivy Vulnerability Report (CRITICAL/HIGH)"
+              echo ""
+              echo '```'
+              cat trivy-high.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### No CRITICAL/HIGH vulnerabilities found" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   lint-and-test:
     runs-on: ubuntu-latest
     steps:
