@@ -40,4 +40,4 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 
 [dependency-groups]
-dev = ["ruff", "black", "pytest", "mkdocs-material"]
+dev = ["ruff", "black", "pytest", "mkdocs-material", "transaction"]

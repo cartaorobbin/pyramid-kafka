@@ -488,6 +488,7 @@ dev = [
     { name = "mkdocs-material" },
     { name = "pytest" },
     { name = "ruff" },
+    { name = "transaction" },
 ]
 
 [package.metadata]
@@ -505,6 +506,7 @@ dev = [
     { name = "mkdocs-material" },
     { name = "pytest" },
     { name = "ruff" },
+    { name = "transaction" },
 ]
 
 [[package]]
