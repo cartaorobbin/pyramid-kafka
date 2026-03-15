@@ -4,13 +4,25 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pyramid_kafka.core import KafkaManager
+from pyramid_kafka.core import (
+    COMMIT_STRATEGY_AUTO,
+    COMMIT_STRATEGY_TRANSACTION,
+    KafkaManager,
+)
 from pyramid_kafka.producer import KafkaEvent, register_kafka_event
+from pyramid_kafka.transaction import KafkaDataManager
 
 if TYPE_CHECKING:
     from pyramid.config import Configurator
 
-__all__ = ["KafkaEvent", "KafkaManager", "includeme"]
+__all__ = [
+    "COMMIT_STRATEGY_AUTO",
+    "COMMIT_STRATEGY_TRANSACTION",
+    "KafkaDataManager",
+    "KafkaEvent",
+    "KafkaManager",
+    "includeme",
+]
 
 
 def includeme(config: Configurator) -> None:

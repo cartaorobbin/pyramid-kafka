@@ -11,6 +11,8 @@ from typing import Any
 import click
 from pyramid.paster import bootstrap, setup_logging
 
+from pyramid_kafka.core import COMMIT_STRATEGY_TRANSACTION
+
 logger = logging.getLogger(__name__)
 
 _running = True
@@ -49,6 +51,83 @@ def _resolve_handler(dotted_path: str) -> Any:
     module_path, attr_name = dotted_path.rsplit(":", 1)
     module = importlib.import_module(module_path)
     return getattr(module, attr_name)
+
+
+def _process_message_auto(
+    handler_fn: Any,
+    request: Any,
+    msg: Any,
+) -> None:
+    """Process a message with auto commit strategy (current behavior).
+
+    Args:
+        handler_fn: The message handler callable.
+        request: The Pyramid request.
+        msg: The consumed Kafka message.
+    """
+    try:
+        handler_fn(request, msg)
+    except Exception:
+        logger.exception(
+            "Error processing message topic=%s partition=%s offset=%s",
+            msg.topic(),
+            msg.partition(),
+            msg.offset(),
+        )
+
+
+def _process_message_transaction(
+    handler_fn: Any,
+    request: Any,
+    msg: Any,
+    consumer: Any,
+) -> None:
+    """Process a message within a transaction, committing offset on success.
+
+    The handler runs inside a ``transaction`` context.  If the handler
+    (and any joined data managers such as SQLAlchemy) succeed, the
+    consumer offset is committed synchronously.  On failure the
+    transaction is aborted and the offset is **not** committed, so the
+    message will be redelivered.
+
+    Args:
+        handler_fn: The message handler callable.
+        request: The Pyramid request.
+        msg: The consumed Kafka message.
+        consumer: The confluent-kafka Consumer for offset commits.
+
+    Raises:
+        ImportError: If the ``transaction`` package is not installed.
+    """
+    try:
+        import transaction as _txn_mod
+    except ImportError:
+        raise ImportError(
+            "The 'transaction' package is required for "
+            "kafka.commit_strategy = 'transaction'. "
+            "Install it with: pip install pyramid-kafka[transaction]"
+        ) from None
+
+    txn_manager = _txn_mod.TransactionManager(explicit=True)
+    txn_manager.begin()
+    try:
+        handler_fn(request, msg)
+        txn_manager.commit()
+        consumer.commit(message=msg, asynchronous=False)
+        logger.debug(
+            "Committed offset topic=%s partition=%s offset=%s",
+            msg.topic(),
+            msg.partition(),
+            msg.offset(),
+        )
+    except Exception:
+        txn_manager.abort()
+        logger.exception(
+            "Transaction aborted for message topic=%s partition=%s offset=%s",
+            msg.topic(),
+            msg.partition(),
+            msg.offset(),
+        )
 
 
 @click.command("kafka-consumer")
@@ -92,6 +171,7 @@ def run(
     request = env["request"]
 
     kafka_manager = registry.kafka
+    is_transactional = kafka_manager.commit_strategy == COMMIT_STRATEGY_TRANSACTION
 
     handler_path = handler or registry.settings.get("kafka.handler")
     if not handler_path:
@@ -116,7 +196,11 @@ def run(
 
     consumer = kafka_manager.consumer
     consumer.subscribe(topic_list)
-    logger.info("Subscribed to topics: %s", topic_list)
+    logger.info(
+        "Subscribed to topics: %s (commit_strategy=%s)",
+        topic_list,
+        kafka_manager.commit_strategy,
+    )
 
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
@@ -129,15 +213,11 @@ def run(
             if msg.error():
                 logger.error("Consumer error: %s", msg.error())
                 continue
-            try:
-                handler_fn(request, msg)
-            except Exception:
-                logger.exception(
-                    "Error processing message topic=%s partition=%s offset=%s",
-                    msg.topic(),
-                    msg.partition(),
-                    msg.offset(),
-                )
+
+            if is_transactional:
+                _process_message_transaction(handler_fn, request, msg, consumer)
+            else:
+                _process_message_auto(handler_fn, request, msg)
     finally:
         kafka_manager.close()
         env["closer"]()

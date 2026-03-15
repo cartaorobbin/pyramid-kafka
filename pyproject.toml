@@ -11,6 +11,9 @@ dependencies = [
     "click",
 ]
 
+[project.optional-dependencies]
+transaction = ["transaction"]
+
 [project.scripts]
 kafka-consumer = "pyramid_kafka.consumer:run"
 

@@ -31,6 +31,12 @@ def full_settings() -> dict[str, str]:
 
 
 @pytest.fixture()
+def transactional_settings(full_settings) -> dict[str, str]:
+    """Return settings with kafka.commit_strategy = transaction."""
+    return {**full_settings, "kafka.commit_strategy": "transaction"}
+
+
+@pytest.fixture()
 def pyramid_config(full_settings):
     """Return a Pyramid Configurator wired with pyramid_kafka."""
     config = testing.setUp(settings=full_settings)
@@ -46,9 +52,14 @@ def mock_producer() -> MagicMock:
     producer = MagicMock()
     producer.produce = MagicMock()
     producer.poll = MagicMock()
-    producer.flush = MagicMock()
+    producer.flush = MagicMock(return_value=0)
     return producer
 
 
 def _dummy_handler(request, message) -> None:
     """No-op handler used in tests."""
+
+
+def _failing_handler(request, message) -> None:
+    """Handler that always raises, used in tests."""
+    raise RuntimeError("handler failure")
