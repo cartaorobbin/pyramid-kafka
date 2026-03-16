@@ -9,6 +9,96 @@ on:
     types: [published]
 
 jobs:
+  security:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Trivy scan (SARIF)
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: 'fs'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          exit-code: '0'
+
+      - name: Upload SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v4
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Trivy scan (CRITICAL/HIGH gate)
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: 'fs'
+          format: 'table'
+          output: 'trivy-high.txt'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          exit-code: '1'
+          skip-setup-trivy: true
+
+      - name: Publish results to step summary
+        if: always()
+        run: |
+          if [ -s trivy-high.txt ]; then
+            {
+              echo "### Trivy Vulnerability Report (CRITICAL/HIGH)"
+              echo ""
+              echo '```'
+              cat trivy-high.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### No CRITICAL/HIGH vulnerabilities found" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Comment on PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let body;
+            if (fs.existsSync('trivy-high.txt') && fs.statSync('trivy-high.txt').size > 0) {
+              const report = fs.readFileSync('trivy-high.txt', 'utf8');
+              body = `### 🔴 Trivy: CRITICAL/HIGH vulnerabilities found\n\n\`\`\`\n${report}\n\`\`\``;
+            } else {
+              body = `### ✅ Trivy: no fixable CRITICAL/HIGH vulnerabilities`;
+            }
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c =>
+              c.user.type === 'Bot' && c.body.startsWith('### ')
+              && c.body.includes('Trivy:')
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
   lint-and-test:
     runs-on: ubuntu-latest
     steps:
