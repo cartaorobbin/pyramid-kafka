@@ -11,6 +11,9 @@ dependencies = [
     "click",
 ]
 
+[project.optional-dependencies]
+transaction = ["transaction"]
+
 [project.scripts]
 kafka-consumer = "pyramid_kafka.consumer:run"
 
@@ -37,4 +40,4 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 
 [dependency-groups]
-dev = ["ruff", "black", "pytest", "mkdocs-material"]
+dev = ["ruff", "black", "pytest", "mkdocs-material", "transaction"]

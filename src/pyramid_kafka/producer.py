@@ -50,7 +50,12 @@ def kafka_event_subscriber(event: KafkaEvent) -> None:
         event: The KafkaEvent instance fired by the application.
     """
     manager = event.request.registry.kafka
-    manager.produce(topic=event.topic, value=event.kwargs, key=event.key)
+    manager.produce(
+        topic=event.topic,
+        value=event.kwargs,
+        key=event.key,
+        request=event.request,
+    )
     logger.debug("Produced KafkaEvent to topic=%s key=%s", event.topic, event.key)
 
 
@@ -125,7 +130,13 @@ def _make_registered_subscriber(
             )
             return
 
-        manager.produce(topic=resolved_topic, value=resolved_value, key=resolved_key)
+        request = getattr(event, "request", None)
+        manager.produce(
+            topic=resolved_topic,
+            value=resolved_value,
+            key=resolved_key,
+            request=request,
+        )
         logger.debug(
             "Produced registered event to topic=%s key=%s",
             resolved_topic,

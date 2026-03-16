@@ -477,12 +477,18 @@ dependencies = [
     { name = "pyramid" },
 ]
 
+[package.optional-dependencies]
+transaction = [
+    { name = "transaction" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "black" },
     { name = "mkdocs-material" },
     { name = "pytest" },
     { name = "ruff" },
+    { name = "transaction" },
 ]
 
 [package.metadata]
@@ -490,7 +496,9 @@ requires-dist = [
     { name = "click" },
     { name = "confluent-kafka" },
     { name = "pyramid" },
+    { name = "transaction", marker = "extra == 'transaction'" },
 ]
+provides-extras = ["transaction"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -498,6 +506,7 @@ dev = [
     { name = "mkdocs-material" },
     { name = "pytest" },
     { name = "ruff" },
+    { name = "transaction" },
 ]
 
 [[package]]
@@ -656,6 +665,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81", size = 34031, upload-time = "2024-12-04T17:35:28.174Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
+]
+
+[[package]]
+name = "transaction"
+version = "5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "zope-interface" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ef/fe/37ef03bdecfb078053421dc7ba2ed974c57e22548f2bd235a9ec5cd8efbb/transaction-5.0.tar.gz", hash = "sha256:106e7bd782bcc0cb5119fc9225b0c9a71dfc53adb938be905223adaef22b1174", size = 87121, upload-time = "2024-09-18T07:25:05.921Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ae/2a/b531f79737312fedf0af878e38bfd42be3a31a7cc74bc89c5f22173ce2ad/transaction-5.0-py3-none-any.whl", hash = "sha256:b4c0b2d49a042d86235fa76531c3356b66d7635bb0e9f29ba2512915fc7b7a42", size = 46295, upload-time = "2024-09-18T07:25:03.686Z" },
 ]
 
 [[package]]
