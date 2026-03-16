@@ -9,7 +9,6 @@ dependencies = [
     "pyramid",
     "confluent-kafka",
     "click",
-    "requests==2.25.1",
 ]
 
 [project.scripts]
