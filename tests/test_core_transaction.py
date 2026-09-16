@@ -33,17 +33,30 @@ def test_kafka_manager_commit_strategy_accepts_transaction(minimal_settings):
     assert manager.commit_strategy == "transaction"
 
 
-def test_kafka_manager_commit_strategy_rejects_invalid(minimal_settings):
+@pytest.mark.parametrize("strategy", ["manual", "bogus", "auto_early"])
+def test_kafka_manager_commit_strategy_rejects_unknown(minimal_settings, strategy):
     """KafkaManager raises ValueError for unknown commit strategy."""
-    minimal_settings["kafka.commit_strategy"] = "manual"
+    minimal_settings["kafka.commit_strategy"] = strategy
 
-    with pytest.raises(ValueError, match="manual"):
+    with pytest.raises(ValueError, match=strategy):
         KafkaManager(minimal_settings)
 
 
+def test_kafka_manager_commit_strategy_error_lists_valid_values(minimal_settings):
+    """ValueError for an unknown strategy names the valid options."""
+    minimal_settings["kafka.commit_strategy"] = "bogus"
+
+    with pytest.raises(ValueError, match="must be 'auto' or 'transaction'"):
+        KafkaManager(minimal_settings)
+
+
+@pytest.mark.parametrize("settings_update", [{}, {"kafka.commit_strategy": "auto"}])
 @patch("pyramid_kafka.core.Producer")
-def test_produce_auto_sends_immediately(mock_producer_cls, minimal_settings):
+def test_produce_auto_sends_immediately(
+    mock_producer_cls, minimal_settings, settings_update
+):
     """With auto strategy, produce() sends to Kafka immediately."""
+    minimal_settings.update(settings_update)
     mock_prod = MagicMock()
     mock_producer_cls.return_value = mock_prod
 
@@ -54,11 +67,13 @@ def test_produce_auto_sends_immediately(mock_producer_cls, minimal_settings):
     mock_prod.poll.assert_called_once_with(0)
 
 
+@pytest.mark.parametrize("settings_update", [{}, {"kafka.commit_strategy": "auto"}])
 @patch("pyramid_kafka.core.Producer")
 def test_produce_auto_with_request_still_sends_immediately(
-    mock_producer_cls, minimal_settings
+    mock_producer_cls, minimal_settings, settings_update
 ):
     """With auto strategy, produce() ignores request and sends immediately."""
+    minimal_settings.update(settings_update)
     mock_prod = MagicMock()
     mock_producer_cls.return_value = mock_prod
     request = MagicMock()
@@ -173,13 +188,19 @@ def test_produce_transaction_buffers_correct_data(
     assert key == b"pay-1"
 
 
+@pytest.mark.parametrize(
+    "settings_update",
+    [{}, {"kafka.commit_strategy": "auto"}, {"kafka.commit_strategy": "transaction"}],
+)
 @patch("pyramid_kafka.core.Consumer")
-def test_consumer_transaction_disables_auto_commit(mock_consumer_cls):
-    """Consumer disables auto-commit when commit_strategy is transaction."""
+def test_consumer_disables_librdkafka_auto_commit_for_strategy(
+    mock_consumer_cls, settings_update
+):
+    """Consumer always sets enable.auto.commit to false."""
     settings = {
         "kafka.bootstrap_servers": "broker:9092",
         "kafka.group_id": "grp",
-        "kafka.commit_strategy": "transaction",
+        **settings_update,
     }
     manager = KafkaManager(settings)
     _ = manager.consumer
@@ -189,14 +210,15 @@ def test_consumer_transaction_disables_auto_commit(mock_consumer_cls):
 
 
 @patch("pyramid_kafka.core.Consumer")
-def test_consumer_auto_does_not_set_auto_commit(mock_consumer_cls):
-    """Consumer with auto strategy does not set enable.auto.commit."""
+def test_consumer_overwrites_extra_enable_auto_commit(mock_consumer_cls):
+    """commit_strategy owns enable.auto.commit even if set via kafka.extra."""
     settings = {
         "kafka.bootstrap_servers": "broker:9092",
         "kafka.group_id": "grp",
+        "kafka.extra.enable.auto.commit": "true",
     }
     manager = KafkaManager(settings)
     _ = manager.consumer
 
     call_config = mock_consumer_cls.call_args[0][0]
-    assert "enable.auto.commit" not in call_config
+    assert call_config["enable.auto.commit"] == "false"

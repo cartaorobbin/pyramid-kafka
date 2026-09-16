@@ -13,6 +13,11 @@ from pyramid.paster import bootstrap, setup_logging
 
 from pyramid_kafka.core import COMMIT_STRATEGY_TRANSACTION
 
+try:
+    import transaction as txn_mod
+except ImportError:
+    txn_mod = None
+
 logger = logging.getLogger(__name__)
 
 _running = True
@@ -53,17 +58,57 @@ def _resolve_handler(dotted_path: str) -> Any:
     return getattr(module, attr_name)
 
 
+def _commit_offset(consumer: Any, msg: Any) -> None:
+    """Commit *msg* synchronously and log the offset.
+
+    Args:
+        consumer: The confluent-kafka Consumer.
+        msg: The consumed Kafka message.
+    """
+    consumer.commit(message=msg, asynchronous=False)
+    logger.debug(
+        "Committed offset topic=%s partition=%s offset=%s",
+        msg.topic(),
+        msg.partition(),
+        msg.offset(),
+    )
+
+
+def _commit_offset_or_log(consumer: Any, msg: Any) -> None:
+    """Commit *msg* and log without raising if the commit fails.
+
+    Args:
+        consumer: The confluent-kafka Consumer.
+        msg: The consumed Kafka message.
+    """
+    try:
+        _commit_offset(consumer, msg)
+    except Exception:
+        logger.exception(
+            "Failed to commit offset topic=%s partition=%s offset=%s",
+            msg.topic(),
+            msg.partition(),
+            msg.offset(),
+        )
+
+
 def _process_message_auto(
     handler_fn: Any,
     request: Any,
     msg: Any,
+    consumer: Any,
 ) -> None:
-    """Process a message with auto commit strategy (current behavior).
+    """Process a message and commit the offset after handler success.
+
+    Librdkafka auto-commit is disabled.  The offset is committed only
+    when the handler returns.  On failure the error is logged and the
+    offset is not committed, so the message can be redelivered.
 
     Args:
         handler_fn: The message handler callable.
         request: The Pyramid request.
         msg: The consumed Kafka message.
+        consumer: The confluent-kafka Consumer for offset commits.
     """
     try:
         handler_fn(request, msg)
@@ -74,6 +119,8 @@ def _process_message_auto(
             msg.partition(),
             msg.offset(),
         )
+        return
+    _commit_offset_or_log(consumer, msg)
 
 
 def _process_message_transaction(
@@ -90,6 +137,10 @@ def _process_message_transaction(
     transaction is aborted and the offset is **not** committed, so the
     message will be redelivered.
 
+    Offset commit happens after the transaction has already committed.
+    A failed offset commit is logged and does not call ``abort()`` —
+    the explicit manager no longer has a transaction to abort.
+
     Args:
         handler_fn: The message handler callable.
         request: The Pyramid request.
@@ -99,27 +150,18 @@ def _process_message_transaction(
     Raises:
         ImportError: If the ``transaction`` package is not installed.
     """
-    try:
-        import transaction as _txn_mod
-    except ImportError:
+    if txn_mod is None:
         raise ImportError(
             "The 'transaction' package is required for "
             "kafka.commit_strategy = 'transaction'. "
             "Install it with: pip install pyramid-kafka[transaction]"
-        ) from None
+        )
 
-    txn_manager = _txn_mod.TransactionManager(explicit=True)
+    txn_manager = txn_mod.TransactionManager(explicit=True)
     txn_manager.begin()
     try:
         handler_fn(request, msg)
         txn_manager.commit()
-        consumer.commit(message=msg, asynchronous=False)
-        logger.debug(
-            "Committed offset topic=%s partition=%s offset=%s",
-            msg.topic(),
-            msg.partition(),
-            msg.offset(),
-        )
     except Exception:
         txn_manager.abort()
         logger.exception(
@@ -128,6 +170,30 @@ def _process_message_transaction(
             msg.partition(),
             msg.offset(),
         )
+        return
+    _commit_offset_or_log(consumer, msg)
+
+
+def _process_message(
+    strategy: str,
+    handler_fn: Any,
+    request: Any,
+    msg: Any,
+    consumer: Any,
+) -> None:
+    """Dispatch message processing according to *strategy*.
+
+    Args:
+        strategy: ``auto`` or ``transaction``.
+        handler_fn: The message handler callable.
+        request: The Pyramid request.
+        msg: The consumed Kafka message.
+        consumer: The confluent-kafka Consumer for offset commits.
+    """
+    if strategy == COMMIT_STRATEGY_TRANSACTION:
+        _process_message_transaction(handler_fn, request, msg, consumer)
+        return
+    _process_message_auto(handler_fn, request, msg, consumer)
 
 
 @click.command("kafka-consumer")
@@ -171,7 +237,6 @@ def run(
     request = env["request"]
 
     kafka_manager = registry.kafka
-    is_transactional = kafka_manager.commit_strategy == COMMIT_STRATEGY_TRANSACTION
 
     handler_path = handler or registry.settings.get("kafka.handler")
     if not handler_path:
@@ -214,10 +279,13 @@ def run(
                 logger.error("Consumer error: %s", msg.error())
                 continue
 
-            if is_transactional:
-                _process_message_transaction(handler_fn, request, msg, consumer)
-            else:
-                _process_message_auto(handler_fn, request, msg)
+            _process_message(
+                kafka_manager.commit_strategy,
+                handler_fn,
+                request,
+                msg,
+                consumer,
+            )
     finally:
         kafka_manager.close()
         env["closer"]()

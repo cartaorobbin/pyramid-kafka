@@ -36,7 +36,7 @@ Returns a lazily-initialized `confluent_kafka.Producer`. Consumer-only settings 
 
 #### `manager.consumer`
 
-Returns a lazily-initialized `confluent_kafka.Consumer`.
+Returns a lazily-initialized `confluent_kafka.Consumer`. Librdkafka `enable.auto.commit` is always `false`. The CLI commits offsets after a successful handler (`auto`) or after the Pyramid transaction succeeds (`transaction`). Using this property in a custom poll loop does not commit offsets for you.
 
 **Raises** `KeyError` if `kafka.group_id` is not set.
 
@@ -176,6 +176,15 @@ def process_message(request, message):
     topic = message.topic()
     # Route to your business logic...
 ```
+
+Do not commit offsets in the handler. The CLI owns commits according to `kafka.commit_strategy`.
+
+This is a **behavior change**: `auto` no longer uses librdkafka interval auto-commit. Offsets move only after a successful handler. A handler that always fails will redeliver the same message indefinitely.
+
+- `auto` (default) — run the handler, then commit the offset. On handler failure the error is logged and the offset is not committed. A failed offset commit is logged separately and does not look like a handler error.
+- `transaction` — run the handler inside a `transaction` manager. Commit the offset only after that transaction succeeds. On handler failure, abort and leave the offset uncommitted. If the transaction already committed and then the offset commit fails, the CLI logs the offset error and continues; it does not abort.
+
+Custom poll loops that use `registry.kafka.consumer` without this CLI must commit offsets themselves. `KafkaManager.consumer` always sets `enable.auto.commit=false`.
 
 ### Signal Handling
 
