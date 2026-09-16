@@ -112,7 +112,9 @@ jobs:
         run: uv python install 3.13
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: |
+          uv lock
+          uv sync --dev
 
       - name: Lint
         run: uv run ruff check .
@@ -139,7 +141,9 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: |
+          uv lock
+          uv sync --dev
 
       - name: Test
         run: uv run pytest
