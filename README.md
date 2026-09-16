@@ -156,6 +156,7 @@ Pyramid config directive to wire any event class to Kafka. `topic` can be a stri
 
 ### Prerequisites
 
+- Python 3.11+
 - [uv](https://docs.astral.sh/uv/) for dependency management
 
 ### Setup

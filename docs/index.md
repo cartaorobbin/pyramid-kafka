@@ -14,6 +14,8 @@ A Pyramid plugin for Apache Kafka integration using [confluent-kafka](https://gi
 
 ### Install
 
+Requires Python 3.11 or newer.
+
 ```bash
 uv add pyramid-kafka
 ```
