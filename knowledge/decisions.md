@@ -46,3 +46,18 @@ Use this format when adding a new decision:
 - The `KafkaDataManager` sort key (`~pyramid_kafka`) ensures Kafka commits after database managers, minimising the window where a sent message could correspond to a rolled-back DB transaction.
 - Consumer offset commits are tied to handler success, enabling at-least-once delivery semantics.
 - Trade-off: Kafka is not truly transactional. If `tpc_finish` succeeds for the DB but Kafka flush fails, the DB commit cannot be rolled back. The sort-key ordering minimises but cannot eliminate this window.
+
+---
+
+### 2026-09-16 — Support Python 3.11 and 3.12
+
+**Status**: Accepted
+
+**Context**: The package declared `requires-python = ">=3.13"` and CI only ran on 3.13. Many Pyramid applications still run 3.11 and 3.12. The library source already uses `from __future__ import annotations` and 3.10-era typing, so it does not depend on 3.13-only language features.
+
+**Decision**: Support Python 3.11+ (`requires-python = ">=3.11"`), including current 3.13. Black and Ruff target `py311`. CI lints on 3.13 and tests on 3.11, 3.12, and 3.13.
+
+**Consequences**:
+- Installers accept 3.11 and 3.12.
+- Compatibility is gated by the CI matrix rather than by 3.13-only syntax.
+- Tooling must not rewrite code to 3.12+ or 3.13-only constructs.
