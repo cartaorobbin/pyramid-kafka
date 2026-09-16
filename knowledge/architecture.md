@@ -21,7 +21,7 @@ src/pyramid_kafka/
 
 **Two event capture paths**: (A) `KafkaEvent` base class — subclass it and fire with `notify()`, the library catches all subclasses via a single Pyramid subscriber. (B) `config.register_kafka_event()` — a Pyramid config directive that registers a subscriber for any event type with explicit topic/key/value extraction. Path B allows forwarding events that don't inherit from KafkaEvent.
 
-**Settings via Pyramid .ini**: All config uses the `kafka.` prefix. Known keys (`bootstrap_servers`, `group_id`, etc.) are mapped to confluent-kafka's dot-notation. `kafka.extra.*` passes through arbitrary librdkafka settings. `kafka.commit_strategy` controls transaction integration.
+**Settings via Pyramid .ini**: All config uses the `kafka.` prefix. Known keys (`bootstrap_servers`, `group_id`, etc.) are mapped to confluent-kafka's dot-notation. `kafka.extra.*` passes through arbitrary librdkafka settings. `kafka.commit_strategy` (`auto` or `transaction`) is shared by producer and consumer.
 
 **Click CLI consumer**: The consumer is a standalone Click command (`kafka-consumer`) that bootstraps a Pyramid app, resolves a handler callable from a dotted path, and runs a poll loop.
 
@@ -47,19 +47,32 @@ App code (commit_strategy=transaction):
     → on transaction.abort():  KafkaDataManager.abort() → buffer discarded
 
 kafka-consumer CLI (commit_strategy=auto):
-  bootstrap(ini) → registry.kafka.consumer → poll loop → handler(request, msg)
+  bootstrap(ini) → consumer(enable.auto.commit=false) → poll loop
+    → per message: handler(request, msg) → commit offset
+    → on handler error: log → offset not committed → message redelivered
+    → on offset-commit error: log (not a handler error) → message redelivered
 
 kafka-consumer CLI (commit_strategy=transaction):
   bootstrap(ini) → consumer(enable.auto.commit=false) → poll loop
     → per message: begin txn → handler(request, msg) → commit txn → commit offset
-    → on error: abort txn → offset not committed → message redelivered
+    → on handler error: abort txn → offset not committed → message redelivered
+    → on offset-commit error after txn success: log → do not abort → CLI continues
 ```
 
 ## Commit Strategy
 
-The `kafka.commit_strategy` setting controls how messages are committed:
+The `kafka.commit_strategy` setting is shared by producer and consumer:
 
-| Strategy | Producer | Consumer |
-|---|---|---|
-| `auto` (default) | Messages sent immediately | Offsets auto-committed by librdkafka |
-| `transaction` | Messages buffered, sent on `pyramid_tm` commit | `enable.auto.commit=false`, offsets committed after handler success |
+- **Producer `auto` (default)**: messages sent immediately. Unchanged.
+- **Producer `transaction`**: messages buffered, sent on `pyramid_tm` commit. Unchanged.
+- **Consumer `auto` (default)**: `enable.auto.commit=false`; CLI commits the offset after handler success. Handler failure logs and skips commit (at-least-once). A permanently failing handler redelivers the same message indefinitely. This **replaces** librdkafka interval auto-commit.
+- **Consumer `transaction`**: `enable.auto.commit=false`; handler runs in a `transaction` manager; offset committed only after txn success. Offset commit is a separate step after `txn.commit()`. A failed offset commit is logged; `abort()` is not called because the explicit manager has no transaction left.
+
+`kafka.extra.enable.auto.commit` is overwritten to `false`. Custom poll loops using `registry.kafka.consumer` without the CLI must commit offsets themselves — otherwise the consumer never advances.
+
+## Key Learnings / Gotchas
+
+- Consumer `auto` is a breaking change vs librdkafka auto-commit: failed messages are no longer skipped.
+- Poison messages need handling in the application (or they loop).
+- `KafkaManager.consumer` does not commit. Only the CLI poll loop does.
+- After a successful transaction, never `abort()` on offset-commit failure (`NoTransaction` on `explicit=True`).
