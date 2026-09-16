@@ -21,9 +21,28 @@ These settings are only required when using the consumer (CLI or `KafkaManager.c
 
 ## Optional Settings
 
-| Setting | Description |
-|---|---|
-| `kafka.client_id` | Client identifier sent to the broker |
+| Setting | Default | Description |
+|---|---|---|
+| `kafka.client_id` | — | Client identifier sent to the broker |
+| `kafka.commit_strategy` | `auto` | `auto` or `transaction`. Shared by producer and consumer. |
+
+### Commit strategy
+
+`kafka.commit_strategy` has two values. The same setting applies to both producer and consumer.
+
+**Producer**
+
+- `auto` (default) — `produce()` sends immediately.
+- `transaction` — buffer until Pyramid `request.tm` commit. Requires `pyramid_kafka[transaction]` and `pyramid_tm`.
+
+**Consumer**
+
+This is a **behavior change** from librdkafka interval auto-commit. `enable.auto.commit` is always `false`. `kafka.extra.enable.auto.commit` is overwritten and has no effect.
+
+- `auto` (default) — the CLI commits the offset after the handler returns successfully. On handler failure, log and skip commit (at-least-once). A message whose handler always fails is redelivered indefinitely. Handlers are `(request, message)` and must not call `consumer.commit`.
+- `transaction` — the handler runs inside a `transaction` manager. The offset is committed only after that transaction succeeds. On handler failure, abort and leave the offset uncommitted. If the transaction succeeds but the offset commit fails, the failure is logged, the transaction is not aborted, and the CLI keeps running (the message may be redelivered). Requires `pyramid_kafka[transaction]`.
+
+Custom poll loops using `registry.kafka.consumer` without the CLI must commit offsets themselves. The library will not commit for you, and librdkafka will not either.
 
 ## Pass-Through Settings
 
@@ -57,6 +76,7 @@ kafka.handler = myapp.stream:process_message
 
 # Optional
 kafka.client_id = my-service
+kafka.commit_strategy = auto
 
 # Pass-through to librdkafka
 kafka.extra.security.protocol = SASL_SSL

@@ -47,6 +47,8 @@ Use this format when adding a new decision:
 - Consumer offset commits are tied to handler success, enabling at-least-once delivery semantics.
 - Trade-off: Kafka is not truly transactional. If `tpc_finish` succeeds for the DB but Kafka flush fails, the DB commit cannot be rolled back. The sort-key ordering minimises but cannot eliminate this window.
 
+**Superseded in part**: Consumer `auto` no longer relies on librdkafka interval auto-commit. See 2026-09-16.
+
 ---
 
 ### 2026-09-16 — Support Python 3.11 and 3.12
@@ -61,3 +63,22 @@ Use this format when adding a new decision:
 - Installers accept 3.11 and 3.12.
 - Compatibility is gated by the CI matrix rather than by 3.13-only syntax.
 - Tooling must not rewrite code to 3.12+ or 3.13-only constructs.
+
+---
+
+### 2026-09-16 — Consumer auto commits after handler success
+
+**Status**: Accepted
+
+**Context**: `kafka.commit_strategy` has two values (`auto` and `transaction`) shared by producer and consumer. Producer `auto` sends immediately; that stays. Consumer `auto` previously left offsets to librdkafka (`enable.auto.commit`), so a failed handler could still have its offset committed, and apps that wanted commit-after-success had to call `consumer.commit` themselves.
+
+**Decision**: Keep one setting with two values. Change consumer `auto` so the CLI owns the offset: always set `enable.auto.commit=false` (including overwriting `kafka.extra.enable.auto.commit`), run the handler, then `consumer.commit(message=msg, asynchronous=False)` on success. On handler failure, log and skip commit. Offset-commit failures are logged as offset errors, not handler errors, and do not abort a transaction that already committed. Handlers stay `(request, message)`. `transaction` still wraps the handler in a Pyramid `transaction` manager, then commits the offset. Custom poll loops without the CLI must commit themselves.
+
+**Consequences**:
+- App handlers do not call `consumer.commit`.
+- Consumer `auto` is at-least-once (late commit), not librdkafka interval auto-commit. This is a breaking change for default `auto`.
+- Failed messages are redelivered instead of silently skipped. A handler that always fails redelivers forever.
+- Anyone using `registry.kafka.consumer` without the CLI must commit offsets or the group never advances.
+- Producer `auto` is still immediate send.
+- Default remains `auto`; `transaction` stays an opt-in extra.
+- Offset commit after `txn.commit()` must not call `abort()`; the explicit manager has no transaction left.

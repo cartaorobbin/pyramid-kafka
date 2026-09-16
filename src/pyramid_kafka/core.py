@@ -67,9 +67,10 @@ class KafkaManager:
 
     When ``kafka.commit_strategy`` is set to ``transaction``, produced
     messages are buffered and only sent when the Pyramid transaction
-    commits (via ``pyramid_tm``).  Consumer auto-offset-commit is
-    disabled so offsets are committed manually after successful
-    processing.
+    commits (via ``pyramid_tm``).  Consumer librdkafka auto-offset-commit
+    is always disabled; offsets are committed after successful
+    processing (``auto``) or after the transaction succeeds
+    (``transaction``).
     """
 
     def __init__(self, settings: dict[str, Any]) -> None:
@@ -122,9 +123,9 @@ class KafkaManager:
     def consumer(self) -> Consumer:
         """Return a lazily-initialized confluent-kafka Consumer.
 
-        When ``commit_strategy`` is ``transaction``, the consumer is
-        created with ``enable.auto.commit = false`` so offsets must be
-        committed explicitly.
+        Librdkafka ``enable.auto.commit`` is always ``false``.  Offsets
+        are committed by the CLI after a successful handler (``auto``)
+        or after the Pyramid transaction succeeds (``transaction``).
 
         Raises:
             KeyError: If ``kafka.group_id`` is not set in settings.
@@ -136,8 +137,7 @@ class KafkaManager:
                 )
             consumer_config = dict(self._config)
             consumer_config.setdefault("auto.offset.reset", "earliest")
-            if self._commit_strategy == COMMIT_STRATEGY_TRANSACTION:
-                consumer_config["enable.auto.commit"] = "false"
+            consumer_config["enable.auto.commit"] = "false"
             self._consumer = Consumer(consumer_config)
             logger.info(
                 "Kafka consumer initialized (commit_strategy=%s)",

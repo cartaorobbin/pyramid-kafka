@@ -41,6 +41,7 @@ kafka.auto_offset_reset = earliest
 kafka.client_id = my-service
 kafka.topics = my.topic.v1 another.topic.v1
 kafka.handler = myapp.stream:process_message
+kafka.commit_strategy = auto
 
 # Pass-through to confluent-kafka (any librdkafka setting)
 kafka.extra.security.protocol = SASL_SSL
@@ -103,7 +104,9 @@ Run the built-in CLI consumer:
 kafka-consumer development.ini
 ```
 
-The consumer reads `kafka.topics` (space or comma-separated) and `kafka.handler` from settings. The handler is a dotted Python path to a callable with signature `(request, message) -> None`:
+The consumer reads `kafka.topics` (space or comma-separated) and `kafka.handler` from settings. The handler is a dotted Python path to a callable with signature `(request, message) -> None`. Do not call `consumer.commit` in application code.
+
+**Behavior change:** `kafka.commit_strategy = auto` (the default) no longer uses librdkafka interval auto-commit. The CLI commits the offset only after the handler returns successfully. A failing handler does not advance the offset, so the message is redelivered — including forever if the handler always fails. Custom poll loops that use `registry.kafka.consumer` without this CLI must commit offsets themselves.
 
 ```python
 # myapp/stream.py
@@ -131,6 +134,7 @@ kafka-consumer development.ini --handler myapp.stream:process_message --topics "
 | `kafka.client_id` | No | — | Client identifier |
 | `kafka.topics` | Consumer only | — | Space or comma-separated topic list |
 | `kafka.handler` | Consumer only | — | Dotted path to handler callable (`module:function`) |
+| `kafka.commit_strategy` | No | `auto` | `auto` or `transaction`. Producer: immediate send vs buffer until `pyramid_tm` commit. Consumer `auto` commits after handler success (not librdkafka interval auto-commit). `transaction` commits the offset after the Pyramid transaction succeeds. |
 | `kafka.extra.*` | No | — | Pass-through to confluent-kafka/librdkafka config |
 
 ## API
