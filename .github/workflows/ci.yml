@@ -10,7 +10,7 @@ on:
 
 jobs:
   security:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     if: github.event_name == 'pull_request'
     permissions:
       contents: read
@@ -100,7 +100,7 @@ jobs:
             }
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v6
 
@@ -123,7 +123,7 @@ jobs:
         run: uv run black --check .
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
@@ -151,7 +151,7 @@ jobs:
   publish:
     if: github.event_name == 'release'
     needs: [lint, test]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     environment: pypi
     permissions:
       id-token: write
@@ -176,7 +176,7 @@ jobs:
   docs:
     if: github.event_name == 'release'
     needs: [lint, test]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
     steps:
